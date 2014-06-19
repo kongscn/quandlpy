@@ -105,65 +105,36 @@ def get(dataset, **kwargs):
     if returns == 'url':  # for test purpose
         return url
     #Determine format data is retrieved in
-    if returns == 'numpy':
-        try:
-            u = urlopen(url)
-            try:
-                array = genfromtxt(u, names=True, delimiter=',', dtype=None)
-            except ValueError as e:
-                error = "Currently we only support multisets with up to 100 columns. Please contact connect@quandl.com if this is a problem."
-                raise MultisetLimit(error)
 
-            return array
-        #Errors
-        except IOError as e:
+
+    try:
+        urldata = _download(url)
+    except HTTPError as e:
+        #API limit reached
+        if str(e) == 'HTTP Error 403: Forbidden':
+            error = 'API daily call limit exceeded. Contact us at connect@quandl.com if you want an increased daily limit'
+            raise CallLimitExceeded(error)
+
+        #Dataset not found
+        elif str(e) == 'HTTP Error 404: Not Found':
+            error = "Dataset not found. Check Quandl code: {} for errors".format(dataset)
+            raise DatasetNotFound(error)
+
+        #Catch all
+        else:
             print("url:", url)
-            raise ParsingError("Parsing Error! {}".format(e))
-        except HTTPError as e:
-            #API limit reached
-            if str(e) == 'HTTP Error 403: Forbidden':
-                error = 'API daily call limit exceeded. Contact us at connect@quandl.com if you want an increased daily limit'
-                raise CallLimitExceeded(error)
-                
-            #Dataset not found    
-            elif str(e) == 'HTTP Error 404: Not Found':
-                error = "Dataset not found. Check Quandl code: {} for errors".format(dataset)
-                raise DatasetNotFound(error)
-            #Catch all
-            else:    
-                print("url:", url)
-                error = "Error Downloading! {}".format(e)
-                raise ErrorDownloading(error)
-    else: # assume pandas is requested
-        try:
-            urldata = _download(url)
+            error = "Error Downloading! {}".format(e)
+            raise ErrorDownloading(error)
 
-            if urldata.columns.size > 100:
-                error = "Currently we only support multisets with up to 100 columns. Please contact connect@quandl.com if this is a problem."
-                raise MultisetLimit(error)
-            else:
-                if verbose and verbose != 'no':
-                    print("Returning Dataframe for ", dataset)
-                return urldata
-        
-        
-        #Error catching
-        except HTTPError as e:
-            #API limit reached 
-            if str(e) == 'HTTP Error 403: Forbidden':
-                error = 'API daily call limit exceeded. Contact us at connect@quandl.com if you want an increased daily limit'
-                raise CallLimitExceeded(error)
-                
-            #Dataset not found    
-            elif str(e) == 'HTTP Error 404: Not Found':
-                error = "Dataset not found. Check Quandl code: {} for errors".format(dataset)
-                raise DatasetNotFound(error)
-                
-            #Catch all 
-            else:    
-                print("url:", url)
-                error = "Error Downloading! {}".format(e)
-                raise ErrorDownloading(error)
+    if urldata.columns.size > 100:
+        error = "Currently we only support multisets with up to 100 columns. Please contact connect@quandl.com if this is a problem."
+        raise MultisetLimit(error)
+    if verbose and verbose != 'no':
+            print("Returning Dataframe for ", dataset)
+
+    if returns == 'numpy':
+        return urldata.to_records()
+    return urldata
 
 def push(data, code, name, authtoken='', desc='', override=False, verbose=False, text=None):
     ''' Upload a pandas Dataframe to Quandl and returns link to the dataset.
